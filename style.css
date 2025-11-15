@@ -301,29 +301,7 @@ button:disabled {
   padding-top: 10px;
 }
 
-/* Kartu belakang bot */
-.bot-hand .card-back {
-  margin: 0;
-  flex-shrink: 0;
-}
 
-.bot-hand.top .card-back {
-  margin-left: -55px;
-}
-
-.bot-hand.top .card-back:first-child {
-  margin-left: 0;
-}
-
-.bot-hand.left .card-back,
-.bot-hand.right .card-back {
-  margin-top: -85px;
-}
-
-.bot-hand.left .card-back:first-child,
-.bot-hand.right .card-back:first-child {
-  margin-top: 5px;
-}
 
 /* ======================================= */
 /* == Status Permainan & Kontrol == */
@@ -712,17 +690,6 @@ button:disabled {
   /* Sesuaikan lebar kartu belakang */
   .card-back {
     width: 60px; /* Turun dari 65px */
-  }
-
-  /* Sesuaikan tumpukan kartu bot (horizontal) */
-  .bot-hand.top .card-back {
-    margin-left: -50px; /* Turun dari -55px */
-  }
-
-  /* Sesuaikan tumpukan kartu bot (vertikal) */
-  .bot-hand.left .card-back,
-  .bot-hand.right .card-back {
-    margin-top: -82px; /* Dibuat lebih tumpang tindih (87px height - 5px reveal) */
   }
 
   /* ===============================================
@@ -1166,6 +1133,251 @@ button:disabled {
     appearance: none;
 }
 
-.player-slot .add-bot-select:hover {
-    background-color: #c3e6cb;
+#adu3-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.85); /* Lebih gelap */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    
+    /* (Pastikan ini ada jika Anda menggunakan class 'active') */
+    visibility: hidden;
+}
+
+#adu3-modal-overlay.active {
+    opacity: 1;
+    visibility: visible;
+}
+
+/* Konten Modal */
+#adu3-modal-content {
+    background: #2c2c2c; /* Latar belakang gelap */
+    color: #f0f0f0; /* Teks putih */
+    padding: 24px;
+    border-radius: 8px;
+    border: 1px solid #555;
+    box-shadow: 0 5px 20px rgba(0, 0, 0, 0.5);
+    text-align: left;
+    max-width: 450px;
+    width: 90%;
+    transform: scale(0.9);
+    transition: transform 0.3s ease;
+}
+
+#adu3-modal-overlay.active #adu3-modal-content {
+    transform: scale(1);
+}
+
+/* Teks Log (menggunakan <pre> agar newline berfungsi) */
+#adu3-modal-text {
+    white-space: pre-wrap; /* Jaga newline */
+    font-family: Consolas, 'Courier New', monospace; /* Font yang rapi */
+    font-size: 14px;
+    line-height: 1.6;
+    max-height: 300px;
+    overflow-y: auto;
+    background-color: #1a1a1a; /* Latar belakang log lebih gelap */
+    padding: 12px;
+    border-radius: 5px;
+    border: 1px solid #444;
+    margin-bottom: 20px;
+    color: #ccc; /* Warna teks log */
+}
+
+/* Style untuk nama pemain di log (jika Anda mau) */
+#adu3-modal-text strong {
+    color: #fff;
+    font-weight: 600;
+}
+
+/* Tombol OK */
+#adu3-btn-ok {
+    width: 100%;
+    padding: 12px;
+    font-size: 16px;
+    font-weight: bold;
+    border: none;
+    border-radius: 5px;
+    background-color: #4CAF50; /* Hijau */
+    color: white;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+#adu3-btn-ok:hover {
+    background-color: #45a049;
+}
+
+/* style.css */
+
+/* ... (CSS Anda yang lain) ... */
+
+/* =================================== */
+/* STYLE BARU UNTUK KARTU SISA (MINI) */
+/* =================================== */
+
+.bot-hand .mini-card {
+    /* Ukuran (Anda bisa sesuaikan ini) */
+    width: 40px; 
+    height: 60px;
+    
+    /* Margin POSITIF agar ada jarak */
+    margin: 2px; /* Ganti dari margin negatif */
+    
+    /* Style umum kartu (tetap sama) */
+    border: 1px solid #999;
+    border-radius: 4px;
+    background-color: #fff;
+    position: relative; 
+    box-shadow: 1px 1px 3px rgba(0,0,0,0.2);
+    font-weight: bold;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2px;
+    box-sizing: border-box;
+}
+
+/* Style Teks di dalam Mini Kartu */
+.mini-card .rank {
+    font-size: 16px;
+    line-height: 1;
+}
+.mini-card .suit {
+    font-size: 12px;
+    line-height: 1;
+}
+
+/* Warna (sama seperti .card) */
+.mini-card.red {
+    color: #B90000;
+}
+.mini-card.black {
+    color: #333;
+}
+
+
+
+
+/* Ini adalah style KHUSUS untuk tumpukan KARTU SISA */
+.bot-hand .stacked-pile {
+    /* Samakan ukuran & margin dengan mini-card agar sejajar */
+    width: 40px; 
+    height: 60px;
+    margin: 2px; /* Margin positif, sama spt .mini-card */
+    
+    /* Tampilan card-back */
+    /* (Tiru style .card-back normal Anda di sini, misal: background-image) */
+    background: #444; /* Ganti dengan gambar/warna Anda */
+    border: 1px solid #999;
+    border-radius: 4px;
+    box-shadow: 1px 1px 3px rgba(0,0,0,0.2);
+    
+    /* Style untuk teks count badge */
+    position: relative;
+    display: flex; /* Untuk menengahkan badge */
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    font-weight: bold;
+    color: white;
+}
+
+/* Badge-nya */
+.bot-hand .stacked-pile span {
+    position: absolute;
+    background-color: rgba(0, 0, 0, 0.7);
+    padding: 4px 6px;
+    border-radius: 5px;
+    z-index: 1;
+}
+
+/* =================================== */
+/* PERBAIKAN v19: 3-Pemain & Stacking */
+/* (Tempel ini di AKHIR file CSS) */
+/* =================================== */
+
+/* === PERBAIKAN Tumpukan Desktop === */
+/* (Memaksa 1 aturan) */
+.bot-hand.top .card-back {
+  /* Kartu 65px lebar, margin -50px = 15px terlihat */
+  margin-left: -50px !important;
+  margin-top: 0 !important;
+}
+
+.bot-hand.top .card-back:first-child {
+  margin-left: 0 !important;
+}
+
+.bot-hand.left .card-back,
+.bot-hand.right .card-back {
+  /* Kartu 95px tinggi, margin -80px = 15px terlihat */
+  margin-top: -80px !important;
+  margin-left: 0 !important;
+}
+
+.bot-hand.left .card-back:first-child,
+.bot-hand.right .card-back:first-child {
+  margin-top: 5px !important;
+}
+
+/* === PERBAIKAN Tumpukan & Layout HP === */
+@media screen and (max-width: 425px) {
+
+  /* INI ADALAH KUNCI MASALAH ANDA:
+    Mendefinisikan ulang grid 3-pemain untuk HP
+  */
+  #game-board.players-3 {
+        /* Definisikan ulang grid HANYA jadi 2 kolom */
+        grid-template-columns: 1fr 3fr; 
+        
+        /* Atur ulang area untuk 2 kolom. Hapus 'bot-right' */
+        grid-template-areas:
+            ". bot-top"             /* Kolom 1 kosong, Bot 2 di kolom 2 */
+            "bot-left play-area"   /* Bot 1 di kolom 1, Pile di kolom 2 */
+            "controls player-hand"; /* Kontrol & Tangan Pemain */
+    }
+
+    /* Pastikan Bot Atas (Bot 2) rata tengah di kolomnya */
+    #game-board.players-3 .grid-area-top {
+        align-items: center;
+    }
+    
+    /* Pastikan Bot Kiri (Bot 1) rata tengah di kolomnya */
+    #game-board.players-3 .grid-area-left {
+        align-items: center;
+        justify-content: flex-start; /* Mulai dari atas */
+    }
+  /* Perbaiki tumpukan HP agar sesuai ukuran kartu HP (87px) */
+  .bot-hand.left .card-back,
+  .bot-hand.right .card-back {
+    /* Kartu 87px tinggi, margin -72px = 15px terlihat */
+    margin-top: -72px !important;
+    margin-left: 0 !important;
+  }
+
+  /* Perbaiki tumpukan HP (lebar 60px) */
+  .bot-hand.top .card-back {
+    /* Kartu 60px lebar, margin -45px = 15px terlihat */
+    margin-left: -45px !important;
+    margin-top: 0 !important;
+  }
+
+  /* Pastikan :first-child juga di-reset di mobile */
+  .bot-hand.left .card-back:first-child,
+  .bot-hand.right .card-back:first-child {
+    margin-top: 5px !important;
+  }
+
+  .bot-hand.top .card-back:first-child {
+    margin-left: 0 !important;
+  }
 }
