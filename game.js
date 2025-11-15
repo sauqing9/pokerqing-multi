@@ -2,7 +2,7 @@
 // KONEKSI MULTIPLAYER (WAJIB)
 // ===================================
 // Ganti "localhost:3000" jika server Anda ada di tempat lain
-const socket = io("https://1d67e2d6-314c-43b7-abc3-9929091dc668-00-3he8ktgy5edn4.sisko.replit.dev");
+const socket = io("http://localhost:3000");
 
 // Saat berhasil terhubung
 socket.on('connect', () => {
@@ -70,6 +70,10 @@ const btnJoinRoom = document.getElementById('btn-join-room');
 const inputJoinRoom = document.getElementById('input-join-room');
 const btnBackToMainMenu = document.getElementById('btn-back-to-main-menu');
 
+const adu3Modal = document.getElementById('adu3-modal-overlay');
+const adu3ModalText = document.getElementById('adu3-modal-text');
+const adu3BtnOk = document.getElementById('adu3-btn-ok');
+
 // Screen & Elemen Lobi
 const roomLobby = document.getElementById('room-lobby');
 const lobbyRoomId = document.getElementById('lobby-room-id');
@@ -103,6 +107,9 @@ let hintComboState = { index: 0, hints: [] };
 let komboChanceState = { index: 0, hints: [] };
 let isGameActive = false;
 let currentRoomState = null;
+let adu3TimerInterval = null;
+let globalTurnTimerInterval = null;
+let postGameTimerInterval = null;
 // Hapus: isMultiplayerMode (sekarang semua adalah multiplayer)
 // Hapus: lastGameWinnerIndex (diurus server)
 // Hapus: GAME_STATE_KEY (tidak ada localStorage)
@@ -406,8 +413,17 @@ function findAllOpeningCombos(hand) {
  * BARU: Merender papan game untuk Multiplayer (menggantikan startNewGame)
  * (Dipanggil setelah menerima data dari server)
  */
-function renderMultiplayerGame(myHand) {
-    isGameActive = true;
+function renderMultiplayerGame(myHand, showStatus = true) {
+    isGameActive = true; 
+
+    // --- PERBAIKAN BUG DIMULAI DI SINI ---
+    // Selalu nonaktifkan tombol saat game baru dimulai/dirender.
+    // Tombol ini HANYA akan aktif jika server mengirim 'yourTurn'.
+    btnPlayCard.disabled = true;
+    btnSkipTurn.disabled = true;
+    setButtonState('neutral'); // Set tombol ke status netral (merah/hijau)
+    // --- AKHIR PERBAIKAN ---
+
     
     // 1. Atur Ulang Papan
     gameState.currentPlayPile = [];
@@ -443,21 +459,14 @@ function renderMultiplayerGame(myHand) {
         { label: 'bot-3-label', count: 'bot-3-card-count', handEl: bot3HandElement }
     ];
 
-    // Cari index kita di server
     const myServerIndex = gameState.players.findIndex(p => p.id === socket.id);
     
     for (let i = 0; i < gameState.settings.maxPlayers; i++) {
-        // Hitung index UI (0=Anda, 1=Kiri, 2=Atas, 3=Kanan)
         let uiIndex = (i - myServerIndex + gameState.settings.maxPlayers) % gameState.settings.maxPlayers;
-        
         const slot = playerSlots[uiIndex];
-        const playerData = gameState.players[i]; // Data dari server
-
-        // Set Nama & Jumlah Kartu
+        const playerData = gameState.players[i];
         document.getElementById(slot.label).textContent = playerData.name + (uiIndex === 0 ? " (Anda)" : "");
         document.getElementById(slot.count).textContent = playerData.cardCount;
-
-        // Render kartu belakang (jika bukan kita)
         if (uiIndex !== 0) {
             slot.handEl.innerHTML = '';
             for (let j = 0; j < playerData.cardCount; j++) {
@@ -466,7 +475,6 @@ function renderMultiplayerGame(myHand) {
         }
     }
     
-    // Sembunyikan slot 4 jika 3 pemain
     if (gameState.settings.maxPlayers === 3) {
         bot3ContainerElement.classList.add('hidden');
     } else {
@@ -483,7 +491,6 @@ function renderMultiplayerGame(myHand) {
     btnSortCards.textContent = "Susun Kartu";
     btnSortCards.style.backgroundColor = "";
 
-    // Tampilkan tombol hint sesuai setting
     btnHintPair.classList.add('hidden');
     btnHintCombo.classList.add('hidden');
     if (gameState.settings.hintPair) {
@@ -496,9 +503,20 @@ function renderMultiplayerGame(myHand) {
     // 5. Pindah Layar
     switchScreen('game-board');
 
-    updateGameStatus(gameState.statusText);
+    // 6. Atur Teks Status
+    if (showStatus) {
+        updateGameStatus(gameState.statusText);
+    } else {
+        // Teks untuk modal Adu 3
+        const startingPlayerIndex = gameState.currentPlayerIndex;
+        const startingPlayer = gameState.players[startingPlayerIndex];
+        let playerName = startingPlayer.name;
+        if (startingPlayerIndex === myServerIndex) {
+            playerName = "Anda";
+        }
+        updateGameStatus(`Permainan dimulai oleh ${playerName}`);
+    }
 }
-
 // (renderHands() LOKAL tidak diperlukan lagi, renderMultiplayerGame/gameStateUpdate sudah menanganinya)
 
 function renderPlayPile() {
@@ -513,6 +531,95 @@ function renderPlayPile() {
         playPileElement.innerHTML += createCardElement(card);
     });
 }
+
+function renderRevealedHand(handElement, cards) {
+    handElement.innerHTML = ''; // Kosongkan
+    
+    if (!cards || cards.length === 0) {
+        return;
+    }
+
+    const maxVisibleCards = 5;
+
+    // 1. Sortir kartu dari TERTINGGI ke TERENDAH
+    const sortedCards = [...cards].sort((a, b) => b.value - a.value); 
+
+    // 2. Pisahkan 5 kartu tertinggi dari sisanya
+    const visibleCards = sortedCards.slice(0, maxVisibleCards);
+    const hiddenCardCount = sortedCards.length - visibleCards.length;
+
+    // 3. Render tumpukan sisa (jika ada) PERTAMA
+    if (hiddenCardCount > 0) {
+        handElement.innerHTML += createStackedCardBackHTML(hiddenCardCount);
+    }
+
+    // 4. Render 5 kartu tertinggi KEDUA
+    visibleCards.forEach(card => {
+        handElement.innerHTML += createMiniCardElement(card);
+    });
+}
+/**
+ * Membersihkan timer giliran visual (jika ada)
+ */
+function clearVisualTimer() {
+    if (globalTurnTimerInterval) {
+        clearInterval(globalTurnTimerInterval);
+        globalTurnTimerInterval = null;
+    }
+}
+
+/**
+ * Memulai countdown visual di status bar
+ * @param {string} baseText Teks dasar (misal "Giliran Anda" atau "Jeda Susun")
+ * @param {number} duration Detik
+ */
+function startVisualTimer(baseText, duration) {
+    clearVisualTimer(); // Hapus timer lama
+    
+    if (duration <= 0) {
+        // Tidak ada timer, set teks saja
+        updateGameStatus(baseText);
+        return;
+    }
+    
+    let countdown = duration;
+    updateGameStatus(`${baseText} (${countdown}s)`); // Tampilan awal
+    
+    globalTurnTimerInterval = setInterval(() => {
+        countdown--;
+        updateGameStatus(`${baseText} (${countdown}s)`);
+        
+        if (countdown <= 0) {
+            clearVisualTimer();
+            // (Server akan menangani auto-skip dan mengirim gameStateUpdate baru)
+            // (Kita bisa tambahkan "Menunggu server..." jika mau)
+            updateGameStatus(`${baseText} (0s)`);
+        }
+    }, 1000);
+}
+
+function startPostGameVisualTimer(duration) {
+    if (postGameTimerInterval) {
+        clearInterval(postGameTimerInterval);
+    }
+    
+    let countdown = duration;
+    btnPlayAgain.textContent = `Main Lagi (${countdown}s)`;
+    btnPlayAgain.disabled = false; // Pastikan tombol aktif (tapi diklik tidak ada aksi)
+
+    postGameTimerInterval = setInterval(() => {
+        countdown--;
+        btnPlayAgain.textContent = `Main Lagi (${countdown}s)`;
+        
+        if (countdown <= 0) {
+            clearInterval(postGameTimerInterval);
+            postGameTimerInterval = null;
+            btnPlayAgain.textContent = "Memulai...";
+            btnPlayAgain.disabled = true;
+        }
+    }, 1000);
+}
+
 function createCardElement(card) {
     const suitSymbols = { 'diamond': '♦', 'club': '♣', 'heart': '♥', 'spade': '♠' };
     const color = (card.suit === 'diamond' || card.suit === 'heart') ? 'red' : 'black';
@@ -524,6 +631,29 @@ function createCardElement(card) {
         </div>
     `;
 }
+
+function createMiniCardElement(card) {
+    const suitSymbols = { 'diamond': '♦', 'club': '♣', 'heart': '♥', 'spade': '♠' };
+    const color = (card.suit === 'diamond' || card.suit === 'heart') ? 'red' : 'black';
+    
+    // HTML yang lebih simpel dengan class 'mini-card'
+    return `
+        <div class="mini-card ${color}">
+            <span class="rank">${card.rank}</span>
+            <span class="suit">${suitSymbols[card.suit]}</span>
+        </div>
+    `;
+}
+
+function createStackedCardBackHTML(count) {
+    // HANYA 'stacked-pile'. Ini menghindari konflik CSS.
+    return `
+        <div class="stacked-pile"> 
+            <span>+${count}</span>
+        </div>
+    `;
+}
+
 function createCardBackHTML() {
     return `<div class="card-back"></div>`;
 }
@@ -628,6 +758,8 @@ btnMenuMain.addEventListener('click', () => {
     // Cara terbersih untuk reset state & socket
     window.location.reload(); 
 });
+
+adu3BtnOk.addEventListener('click', closeAdu3Modal);
 
 // btnMenuRestart.addEventListener('click', ...); // (Dihapus)
 // btnStartGame.addEventListener('click', ...); // (Dihapus)
@@ -772,10 +904,17 @@ socket.on('displayError', (message) => {
     }
     // --- AKHIR PERBAIKAN ---
 
-    if (message.includes('Host telah keluar') || message.includes('di-kick')) {
+    if (message.includes('di-kick')) {
+        // Jika kita di-kick, reload
         currentRoomState = null;
         switchScreen('main-menu');
         window.location.reload();
+    } else if (message.includes('Host telah keluar')) {
+        // Jika host keluar DARI LOBI, kita reload
+        // Jika host keluar DARI GAME, 'returnToLobby' akan menangani
+        if (!isGameActive) {
+            window.location.reload();
+        }
     }
 });
 
@@ -806,25 +945,34 @@ socket.on('gameStarted', (data) => {
         }
     });
     
-    // 6. Panggil render
-    renderMultiplayerGame(myHand); 
+    // 6. PANGGIL RENDER, TAPI JANGAN TAMPILKAN STATUS
+    renderMultiplayerGame(myHand, false); // <-- 'false' artinya jangan update status bar
+    
+    // 7. TAMPILKAN MODAL
+    // (Ini sekarang akan menampilkan log Adu 3 / Main Lagi di modal)
+    showAdu3Modal(publicState.statusText);
 });
-
 /**
  * Server mengirim update gameState (Logika mapping UI diperbaiki)
  */
 socket.on('gameStateUpdate', (publicState) => {
     console.log("Menerima gameStateUpdate:", publicState);
     
-    // 1. Simpan tangan ASLI kita (selalu di [0])
+    // --- PREMOVE LOGIC (1/4): Simpan kartu yang di-select ---
+    // Kita simpan ID dari kartu apa pun yang sedang dipilih
+    const premoveCardIds = new Set();
+    playerHandElement.querySelectorAll('.card.selected').forEach(cardEl => {
+        premoveCardIds.add(cardEl.getAttribute('data-id'));
+    });
+    // --- AKHIR PREMOVE LOGIC (1/4) ---
+
+
+    // 1. Simpan tangan ASLI kita (logika ini tetap sama)
     let myHand = (gameState.playerHands && gameState.playerHands.length > 0) ? gameState.playerHands[0] : []; 
-    
     const myServerIndex = publicState.players.findIndex(p => p.id === socket.id);
     const iJustPlayed = (publicState.lastPlayerToPlay === myServerIndex);
-
-    // FIX BUG: Jika kita baru saja main, bersihkan tangan kita
     if (iJustPlayed && publicState.currentPlayPile.length > 0) {
-        console.log("Saya baru main. Membersihkan tangan (klien)...");
+        // console.log("Saya baru main. Membersihkan tangan (klien)..."); // (dihapus agar tidak spam log)
         const playedCardIds = new Set(publicState.currentPlayPile.map(c => c.id));
         myHand = myHand.filter(card => !playedCardIds.has(card.id));
     }
@@ -832,13 +980,9 @@ socket.on('gameStateUpdate', (publicState) => {
     // 2. Timpa state global
     gameState = publicState; 
     
-    // 3. Buat ulang array playerHands (ukuran 4)
+    // 3. Buat ulang array playerHands (placeholder) (logika ini tetap sama)
     gameState.playerHands = new Array(publicState.players.length);
-    
-    // 4. Pasang kembali tangan ASLI kita (yang sudah bersih) di [0]
     gameState.playerHands[0] = myHand;
-
-    // 5. Isi sisa slot [1], [2], [3] dengan placeholder BARU
     publicState.players.forEach((p, serverIndex) => {
         if (serverIndex !== myServerIndex) {
             let uiIndex = (serverIndex - myServerIndex + publicState.settings.maxPlayers) % publicState.settings.maxPlayers;
@@ -846,32 +990,50 @@ socket.on('gameStateUpdate', (publicState) => {
         }
     });
 
-    // 6. Render ulang tumpukan kartu
+    // 4. Render ulang papan (logika ini tetap sama)
     renderPlayPile(); 
     
-    // 7. Render ulang tangan KITA (Player 0)
+    // 4A. Render ulang tangan KITA
     playerHandElement.innerHTML = '';
     gameState.playerHands[0].forEach(card => {
         playerHandElement.innerHTML += createCardElement(card);
     });
-    addCardClickListeners(); // Pasang listener ke kartu baru
     
-    // 8. Render ulang Card Counts & Nama (Pemain lain)
+    // --- PREMOVE LOGIC (2/4): Terapkan kembali selection ---
+    // Setelah tangan dibuat ulang, cari kartu tadi dan pilih lagi
+    if (premoveCardIds.size > 0) {
+        playerHandElement.querySelectorAll('.card').forEach(cardEl => {
+            if (premoveCardIds.has(cardEl.getAttribute('data-id'))) {
+                cardEl.classList.add('selected');
+            }
+        });
+    }
+    // --- AKHIR PREMOVE LOGIC (2/4) ---
+
+    // (Panggil ini SETELAH menerapkan kembali selection)
+    addCardClickListeners();
+    
+    // --- PREMOVE LOGIC (3/4): Panggil 'disable check' ---
+    // Ini adalah bagian "unselectnya otomatisnya klo kartu kita disable aja"
+    // Kita panggil ini secara manual agar kartu premove yang
+    // sekarang ilegal (disabled) akan di-unselect.
+    updatePlayerHandInteractiveness();
+    // --- AKHIR PREMOVE LOGIC (3/4) ---
+
+
+    // 5. Render ulang Bot (logika ini tetap sama)
     const playerSlots = [
         { label: 'player-label', count: 'player-card-count', handEl: playerHandElement },
         { label: 'bot-1-label', count: 'bot-1-card-count', handEl: bot1HandElement },
         { label: 'bot-2-label', count: 'bot-2-card-count', handEl: bot2HandElement },
         { label: 'bot-3-label', count: 'bot-3-card-count', handEl: bot3HandElement }
     ];
-    
     for (let i = 0; i < gameState.settings.maxPlayers; i++) {
         let uiIndex = (i - myServerIndex + gameState.settings.maxPlayers) % gameState.settings.maxPlayers;
         const slot = playerSlots[uiIndex];
         const playerData = gameState.players[i];
-
         document.getElementById(slot.label).textContent = playerData.name + (uiIndex === 0 ? " (Anda)" : "");
         document.getElementById(slot.count).textContent = playerData.cardCount;
-
         if (uiIndex !== 0) {
             slot.handEl.innerHTML = '';
             for (let j = 0; j < playerData.cardCount; j++) {
@@ -880,26 +1042,48 @@ socket.on('gameStateUpdate', (publicState) => {
         }
     }
     
-    // 9. Update Status Teks
-    updateGameStatus(publicState.statusText || "...");
+    // 6. Mulai Timer Visual (logika ini tetap sama)
+    let baseText = publicState.statusText;
+    
+    // --- PREMOVE LOGIC (4/4): Perbarui Teks Status ---
+    // Jika BUKAN giliran kita, jangan tampilkan "Giliran Anda"
+    // (Penting agar premove tidak bingung)
+    if (publicState.currentPlayerIndex === myServerIndex) {
+         if (baseText.includes(publicState.players[myServerIndex].name)) {
+            baseText = "Giliran Anda";
+         }
+    }
+    // --- AKHIR PREMOVE LOGIC (4/4) ---
+    
+    startVisualTimer(baseText, publicState.turnTimerDuration);
 });
-
 /**
  * Server bilang INI GILIRAN KITA!
  */
 socket.on('yourTurn', () => {
     console.log("SERVER BILANG: GILIRAN SAYA!");
     
+    // clearVisualTimer(); // <-- JANGAN PANGGIL INI DI SINI
+
     btnPlayCard.disabled = false;
     btnSkipTurn.disabled = false;
     
-    // Cek ulang aturan 'wajib main'
-    const myServerIndex = gameState.players.findIndex(p => p.id === socket.id);
-    if (gameState.isFirstTurn || gameState.lastPlayerToPlay === myServerIndex) {
+    const myServerIndex = (gameState.players) ? gameState.players.findIndex(p => p.id === socket.id) : -1;
+    if (gameState.isFirstTurn || (gameState.lastPlayerToPlay === myServerIndex)) {
         btnSkipTurn.disabled = true;
     }
     
-    // Jalankan validasi UI
+    // --- TAMBAHAN (PENGAMAN JIKA 'gameStateUpdate' TELAT) ---
+    // Panggil timer di sini untuk memastikan.
+    // 'gameStateUpdate' yang datang setelah ini akan me-restart timer-nya,
+    // jadi tidak akan ada timer ganda.
+    if (gameState && gameState.turnTimerDuration > 0) {
+         startVisualTimer("Giliran Anda", gameState.turnTimerDuration); 
+    } else {
+         updateGameStatus("Giliran Anda"); // Fallback jika durasi 0
+    }
+    // --- AKHIR TAMBAHAN ---
+
     updatePlayerHandInteractiveness();
     validatePlayerSelection();
     updateHintButtons();
@@ -909,44 +1093,97 @@ socket.on('yourTurn', () => {
  * BARU: Server bilang game selesai
  */
 socket.on('gameEnded', (data) => {
-    const { results, reason } = data;
-    console.log("GAME BERAKHIR! Alasan:", reason, "Hasil:", results);
+    const { results, reason, revealedHands, duration } = data;
+    console.log("GAME BERAKHIR! Alasan:", reason, "Durasi:", duration);
     
     isGameActive = false;
-    currentRoomState = null; // Reset state lobi
+    currentRoomState = null;
+    clearVisualTimer(); // Matikan timer giliran
     
+    // Hentikan timer Adu 3 jika masih jalan
+    if (adu3TimerInterval) closeAdu3Modal();
+    // Hentikan timer countdown 'Main Lagi' sebelumnya (jika ada)
+    if (postGameTimerInterval) clearInterval(postGameTimerInterval);
+
+    btnPlayCard.disabled = true;
+    btnSkipTurn.disabled = true;
+
+    // --- LOGIKA TAMPILKAN KARTU SISA (Tetap sama) ---
+    if (revealedHands) {
+        const myServerIndex = gameState.players.findIndex(p => p.id === socket.id);
+        const playerSlots = [ playerHandElement, bot1HandElement, bot2HandElement, bot3HandElement ];
+        
+        gameState.players.forEach((player, serverIndex) => {
+            let uiIndex = (serverIndex - myServerIndex + gameState.settings.maxPlayers) % gameState.settings.maxPlayers;
+            const handElement = playerSlots[uiIndex];
+            
+            if (handElement && revealedHands[player.id]) {
+                if (uiIndex === 0) {
+                    playerHandElement.querySelectorAll('.card').forEach(c => c.classList.remove('disabled'));
+                } else {
+                    renderRevealedHand(handElement, revealedHands[player.id]);
+                }
+            }
+        });
+    }
+    // --- AKHIR LOGIKA KARTU SISA ---
+
     // Buat pesan hasil
     let resultsMessage = `--- HASIL AKHIR ---\n\n`;
     results.forEach(p => {
         resultsMessage += `Juara ${p.rank}: ${p.name}\n`;
     });
 
+    // --- LOGIKA BARU: TAMPILKAN MODAL & TOMBOL ---
+    
+    // 1. HAPUS 'setTimeout' - Tampilkan modal SEKARANG
     endGameResultsElement.innerText = resultsMessage;
 
-    // TODO: Logika "Main Lagi" hanya untuk Host
-    // Untuk saat ini, kita sembunyikan tombol "Main Lagi"
-    btnPlayAgain.classList.add('hidden'); 
-
-    // Tampilkan tombol menu utama
+    // 2. Tampilkan KEDUA tombol untuk SEMUA pemain
+    btnPlayAgain.classList.remove('hidden');
     btnEndGameMainMenu.classList.remove('hidden');
     
-    if (data.reason === 'disconnect') {
-        // Jika disconnect, hanya tampilkan menu utama
-        btnEndGameMainMenu.classList.remove('hidden');
-    } else {
-        // Cek apakah KITA adalah host
-        if (gameState.hostId === socket.id) {
-            // Kita host, tampilkan "Main Lagi"
-            btnPlayAgain.classList.remove('hidden');
-        } else {
-            // Kita bukan host, tampilkan "Menu Utama"
-            btnEndGameMainMenu.classList.remove('hidden');
-        }
-    }
+    // 3. Aktifkan tombol (jika nonaktif)
+    btnPlayAgain.disabled = false;
+    btnEndGameMainMenu.disabled = false;
     
+    // 4. Pindah ke layar akhir
     switchScreen('end-game-screen');
+    
+    // 5. Mulai countdown
+    if (reason !== 'disconnect' && duration > 0) {
+        startPostGameVisualTimer(duration);
+    } else {
+        // Jika disconnect, jangan mulai countdown
+        btnPlayAgain.textContent = "Main Lagi";
+        btnPlayAgain.disabled = true; // Tidak bisa 'main lagi' jika ada yg disconnect
+    }
 });
 
+socket.on('returnToLobby', (room) => {
+    console.log("Pemain lain keluar, kembali ke lobi...");
+    
+    // 1. Hentikan semua timer
+    clearVisualTimer();
+    if (postGameTimerInterval) {
+        clearInterval(postGameTimerInterval);
+        postGameTimerInterval = null;
+    }
+    if (adu3TimerInterval) closeAdu3Modal();
+
+    // 2. Simpan state lobi baru
+    currentRoomState = room;
+    isGameActive = false;
+    
+    // 3. Render ulang lobi (ini akan menunjukkan host baru jika host lama keluar)
+    renderLobby(room);
+    
+    // 4. Pindah layar
+    switchScreen('room-lobby');
+    
+    // 5. Tampilkan notifikasi
+    alert("Seorang pemain telah keluar. Kembali ke lobi.");
+});
 
 // ===================================
 // FUNGSI RENDER LOBI (UI)
@@ -1208,13 +1445,22 @@ btnResetSort.addEventListener('click', () => {
 
 // Tombol "Main Lagi" -> HANYA UNTUK HOST (Logika di server)
 btnPlayAgain.addEventListener('click', () => {
-    // (Tombol ini disembunyikan, tapi jika ingin diaktifkan,
-    //  Host harus mengirim emit 'playAgain')
-    console.log("Mengirim 'playAgain' (Host)...");
-    socket.emit('playAgain');
+    // Tombol ini tidak lagi mengirim 'playAgain'
+    // Server menangani 'Main Lagi' secara otomatis
+    
+    // Beri feedback visual bahwa kita menunggu
+    btnPlayAgain.disabled = true;
+    btnPlayAgain.textContent = "Menunggu...";
+    
+    // Hentikan timer countdown visual (jika ada)
+    if (postGameTimerInterval) {
+        clearInterval(postGameTimerInterval);
+        postGameTimerInterval = null;
+    }
 });
 
 btnEndGameMainMenu.addEventListener('click', () => {
+    socket.emit('requestMainMenu');
     // Reload halaman
     window.location.reload();
 });
@@ -1238,8 +1484,9 @@ const COMBO_5_CARD_RANKS = {
     'straight': 1,
     'flush': 2,
     'full-house': 3,
-    'straight-flush': 4
+    'straight-flush': 4 // Ini juga Bomb
 };
+
 /**
  * DIPERBARUI (v6): Perbaikan Logika '2 vs 2'
  */
@@ -1279,7 +1526,7 @@ function isComboValid(newCombo, pileCombo) {
             return false; // Non-Bomb vs Bomb
         }
         
-        // --- INI ADALAH PERBAIKANNYA ---
+        // --- INI PERBAIKAN UNTUK BUG 1 ---
         if (isPileSingleTwo) {
             // Meja adalah '2' tunggal.
             // Kartu baru (non-bomb) HARUS '2' tunggal juga.
@@ -1483,51 +1730,101 @@ btnUnselect.addEventListener('click', () => {
 // (Tidak berubah, ini sudah benar)
 
 function updatePlayerHandInteractiveness() {
+    // 1. Reset semua kartu
     playerHandElement.querySelectorAll('.card').forEach(c => c.classList.remove('disabled'));
+
+    // 2. Jangan disable apa-apa jika mode susun
     if (isSortMode) return;
+
+    // 3. Cek Meja Kosong
     if (gameState.currentPlayPile.length === 0) {
         return;
     }
     const pileCombo = getComboDetails(gameState.currentPlayPile);
     if (pileCombo.type === 'invalid') return;
+
+    // 4. Cek 5-Kartu
     if (pileCombo.cards.length === 5) {
-        return; 
+        return; // Terlalu rumit, biarkan semua aktif
     }
 
+    // 5. Cek '2' Tunggal (Logika ini sudah OK)
     const isPileSingleTwo = (pileCombo.type === 'one-card' && pileCombo.cards[0].rank === '2');
-    let benchmarkValue = 0;
-    let cardIdsToKeepActive = new Set();
-
     if (isPileSingleTwo) {
-        benchmarkValue = pileCombo.cards[0].value;
+        let cardIdsToKeepActive = new Set();
         const allPlayerCombos = findAllOpeningCombos(gameState.playerHands[0]);
         const allBombs = allPlayerCombos.filter(c => c.type === 'straight-flush' || c.type === '4-of-a-kind');
+        
         allBombs.forEach(bomb => {
             bomb.cards.forEach(card => cardIdsToKeepActive.add(card.id));
         });
-    } else {
-        benchmarkValue = pileCombo.cards[0].value;
+        
+        playerHandElement.querySelectorAll('.card').forEach(cardEl => {
+            if (!cardIdsToKeepActive.has(cardEl.getAttribute('data-id'))) {
+                cardEl.classList.add('disabled');
+                cardEl.classList.remove('selected');
+            }
+        });
+        return; // Selesai
     }
 
-    const playerCards = playerHandElement.querySelectorAll('.card');
-    playerCards.forEach(cardEl => {
-        const cardValue = parseInt(cardEl.getAttribute('data-value'), 10);
-        const cardId = cardEl.getAttribute('data-id');
-        let shouldDisable = false;
-        
-        if (isPileSingleTwo) {
-            if (cardValue <= benchmarkValue && !cardIdsToKeepActive.has(cardId)) {
-                shouldDisable = true;
-            }
-        } else {
-            if (cardValue < benchmarkValue) {
-                shouldDisable = true;
+    // 6. LOGIKA BARU (vs Normal Play: 1, 2, 3, 4 kartu)
+    
+    const pileType = pileCombo.type;
+    const pileValue = pileCombo.value; // Ini adalah value kartu TERTINGGI di kombo
+    let cardIdsToKeepActive = new Set(); // Kartu yang JANGAN di-disable
+
+    // --- PERBAIKAN BUG UTAMA ADA DI SINI ---
+    // SELALU tambahkan semua kartu yang nilainya > pileValue
+    // Ini akan otomatis meng-handle:
+    // - Pair 8 vs Pair 7
+    // - Tris 9 vs Tris 8
+    // - Single K vs Single J
+    gameState.playerHands[0].forEach(card => {
+        if (card.value > pileValue) {
+            cardIdsToKeepActive.add(card.id);
+        }
+    });
+    // --- AKHIR PERBAIKAN BUG UTAMA ---
+    
+    // --- LOGIKA TAMBAHAN (dari V7) untuk MENANG DENGAN RANK SAMA ---
+    // (Contoh: [7C, 7S] vs [7D, 7H])
+    if (pileType === '1-pair' || pileType === 'tris' || pileType === '4-of-a-kind') {
+        const pileRank = pileCombo.cards[0].rank; // Misal: '7'
+
+        // 1. Ambil semua kartu kita yang rank-nya sama
+        const ourMatchingCards = gameState.playerHands[0]
+            .filter(card => card.rank === pileRank)
+            .sort((a, b) => b.value - a.value); // Sortir tinggi ke rendah
+
+        let canWinWithSameRank = false;
+
+        // Cek apakah kita bisa membentuk kombo tandingan
+        if (pileType === '1-pair' && ourMatchingCards.length >= 2) {
+            // Cek pair tertinggi kita
+            const ourBestPairValue = ourMatchingCards[0].value;
+            if (ourBestPairValue > pileValue) {
+                canWinWithSameRank = true;
             }
         }
-        
-        if (shouldDisable) {
+        // (Bisa ditambahkan logika untuk Tris vs Tris, dll. jika perlu)
+
+        // 2. Tandai kartu yang boleh aktif
+        if (canWinWithSameRank) {
+            // Jika kita bisa menang, tambahkan SEMUA kartu rank tsb ke set
+            ourMatchingCards.forEach(card => cardIdsToKeepActive.add(card.id));
+        }
+    }
+    
+    // (Logika 5-card / Bomb vs Pair/Tris belum ditangani, 
+    //  tapi ini akan memperbaiki bug "disable semua")
+
+    // 7. Loop Terakhir: Nonaktifkan semua yang TIDAK ada di set
+    playerHandElement.querySelectorAll('.card').forEach(cardEl => {
+        const cardId = cardEl.getAttribute('data-id');
+        if (!cardIdsToKeepActive.has(cardId)) {
             cardEl.classList.add('disabled');
-            cardEl.classList.remove('selected'); 
+            cardEl.classList.remove('selected');
         }
     });
 }
@@ -1593,14 +1890,49 @@ function validatePlayerSelection() {
     }
 }
 
+function closeAdu3Modal() {
+    if (adu3TimerInterval) {
+        clearInterval(adu3TimerInterval);
+        adu3TimerInterval = null;
+    }
+    adu3Modal.classList.add('hidden');
+    adu3Modal.classList.remove('active');
+}
+
+/**
+ * Menampilkan modal Adu 3 dengan countdown
+ * @param {string} text Konten untuk ditampilkan (dari statusText)
+ */
+function showAdu3Modal(text) {
+    // 1. Set teks
+    adu3ModalText.textContent = text;
+    
+    // 2. Tampilkan modal
+    adu3Modal.classList.remove('hidden');
+    adu3Modal.classList.add('active');
+
+    // 3. Siapkan countdown
+    let countdown = 3;
+    adu3BtnOk.textContent = `Oke (${countdown}s)`;
+
+    // 4. Hapus timer lama jika ada (safety check)
+    if (adu3TimerInterval) {
+        clearInterval(adu3TimerInterval);
+    }
+
+    // 5. Mulai timer baru
+    adu3TimerInterval = setInterval(() => {
+        countdown--;
+        adu3BtnOk.textContent = `Oke (${countdown}s)`;
+
+        if (countdown <= 0) {
+            closeAdu3Modal();
+        }
+    }, 1000); // Hitung setiap 1 detik
+}
+
 // ===================================
 // MULAI APLIKASI
 // ===================================
 // (Hapus loadAndResumeGame(), ganti dengan pindah ke main-menu)
-
 switchScreen('main-menu');
-
-
-
-
-
