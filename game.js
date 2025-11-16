@@ -2,7 +2,7 @@
 // KONEKSI MULTIPLAYER (WAJIB)
 // ===================================
 // Ganti "localhost:3000" jika server Anda ada di tempat lain
-const socket = io("http://localhost:3000");
+const socket = io("https://1d67e2d6-314c-43b7-abc3-9929091dc668-00-3he8ktgy5edn4.sisko.replit.dev");
 
 // Saat berhasil terhubung
 socket.on('connect', () => {
@@ -1936,3 +1936,4 @@ function showAdu3Modal(text) {
 // ===================================
 // (Hapus loadAndResumeGame(), ganti dengan pindah ke main-menu)
 switchScreen('main-menu');
+
