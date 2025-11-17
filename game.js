@@ -2,7 +2,7 @@
 // KONEKSI MULTIPLAYER (WAJIB)
 // ===================================
 // Ganti "localhost:3000" jika server Anda ada di tempat lain
-const socket = io("https://1d67e2d6-314c-43b7-abc3-9929091dc668-00-3he8ktgy5edn4.sisko.replit.dev");
+const socket = io("http://localhost:3000");
 
 // Saat berhasil terhubung
 socket.on('connect', () => {
@@ -1108,10 +1108,12 @@ socket.on('gameEnded', (data) => {
     btnPlayCard.disabled = true;
     btnSkipTurn.disabled = true;
 
-    // --- LOGIKA TAMPILKAN KARTU SISA (Tetap sama) ---
+    // --- LOGIKA TAMPILKAN KARTU SISA ---
+    // (Jalankan ini SEGERA agar terlihat selama jeda)
     if (revealedHands) {
         const myServerIndex = gameState.players.findIndex(p => p.id === socket.id);
-        const playerSlots = [ playerHandElement, bot1HandElement, bot2HandElement, bot3HandElement ];
+        // (Pastikan 4 slot elemen ini ada)
+        const playerSlots = [ playerHandElement, bot1HandElement, bot2HandElement, bot3HandElement ]; 
         
         gameState.players.forEach((player, serverIndex) => {
             let uiIndex = (serverIndex - myServerIndex + gameState.settings.maxPlayers) % gameState.settings.maxPlayers;
@@ -1119,8 +1121,10 @@ socket.on('gameEnded', (data) => {
             
             if (handElement && revealedHands[player.id]) {
                 if (uiIndex === 0) {
+                    // (Kartu kita sendiri, pastikan tidak disable)
                     playerHandElement.querySelectorAll('.card').forEach(c => c.classList.remove('disabled'));
                 } else {
+                    // Render kartu sisa pemain lain
                     renderRevealedHand(handElement, revealedHands[player.id]);
                 }
             }
@@ -1134,30 +1138,37 @@ socket.on('gameEnded', (data) => {
         resultsMessage += `Juara ${p.rank}: ${p.name}\n`;
     });
 
-    // --- LOGIKA BARU: TAMPILKAN MODAL & TOMBOL ---
+    // --- PERBAIKAN (SESUAI PERMINTAAN ANDA) ---
+    // JANGAN langsung pindah layar. Beri jeda 3 detik
+    // agar pemain bisa melihat kartu terakhir di meja dan sisa kartu lawan.
     
-    // 1. HAPUS 'setTimeout' - Tampilkan modal SEKARANG
-    endGameResultsElement.innerText = resultsMessage;
+    console.log("Menunggu 3 detik sebelum menampilkan modal hasil...");
 
-    // 2. Tampilkan KEDUA tombol untuk SEMUA pemain
-    btnPlayAgain.classList.remove('hidden');
-    btnEndGameMainMenu.classList.remove('hidden');
-    
-    // 3. Aktifkan tombol (jika nonaktif)
-    btnPlayAgain.disabled = false;
-    btnEndGameMainMenu.disabled = false;
-    
-    // 4. Pindah ke layar akhir
-    switchScreen('end-game-screen');
-    
-    // 5. Mulai countdown
-    if (reason !== 'disconnect' && duration > 0) {
-        startPostGameVisualTimer(duration);
-    } else {
-        // Jika disconnect, jangan mulai countdown
-        btnPlayAgain.textContent = "Main Lagi";
-        btnPlayAgain.disabled = true; // Tidak bisa 'main lagi' jika ada yg disconnect
-    }
+    setTimeout(() => {
+        // 1. Isi teks modal
+        endGameResultsElement.innerText = resultsMessage;
+
+        // 2. Tampilkan KEDUA tombol untuk SEMUA pemain
+        btnPlayAgain.classList.remove('hidden');
+        btnEndGameMainMenu.classList.remove('hidden');
+        
+        // 3. Aktifkan tombol (jika nonaktif)
+        btnPlayAgain.disabled = false;
+        btnEndGameMainMenu.disabled = false;
+        
+        // 4. Pindah ke layar akhir (SETELAH JEDA)
+        switchScreen('end-game-screen');
+        
+        // 5. Mulai countdown (SETELAH JEDA)
+        if (reason !== 'disconnect' && duration > 0) {
+            startPostGameVisualTimer(duration);
+        } else {
+            // Jika disconnect, jangan mulai countdown
+            btnPlayAgain.textContent = "Main Lagi";
+            btnPlayAgain.disabled = true; // Tidak bisa 'main lagi' jika ada yg disconnect
+        }
+
+    }, 3000); // Jeda 3 detik
 });
 
 socket.on('returnToLobby', (room) => {
@@ -1936,4 +1947,3 @@ function showAdu3Modal(text) {
 // ===================================
 // (Hapus loadAndResumeGame(), ganti dengan pindah ke main-menu)
 switchScreen('main-menu');
-
