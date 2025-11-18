@@ -2,7 +2,7 @@
 // KONEKSI MULTIPLAYER (WAJIB)
 // ===================================
 // Ganti "localhost:3000" jika server Anda ada di tempat lain
-const socket = io("http://localhost:3000");
+const socket = io("https://2d17c293-01d0-478e-adf6-79ce18178cf6-00-1d9zj3alei447.pike.replit.dev/");
 
 // Saat berhasil terhubung
 socket.on('connect', () => {
@@ -1947,3 +1947,4 @@ function showAdu3Modal(text) {
 // ===================================
 // (Hapus loadAndResumeGame(), ganti dengan pindah ke main-menu)
 switchScreen('main-menu');
+
